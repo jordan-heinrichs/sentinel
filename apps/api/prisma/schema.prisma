@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  createdAt DateTime   @default(now())
+  snapshots Snapshot[]
+}
+
+model Snapshot {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  stage        Int
+  snapshotJson Json
+  driftResult  Json?
+  suggestions  Json?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
