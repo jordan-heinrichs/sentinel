@@ -7,6 +7,9 @@ import { snapshotsRouter } from "./routes/snapshots";
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+app.get("/health", (_req, res) => res.json({ ok: true }));
+
 app.use("/snapshots", snapshotsRouter);
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
@@ -41,6 +44,8 @@ app.post('/strategy/suggest', (req, res) => {
 });
 
 const port = Number(process.env.PORT ?? 3001);
+console.log("Mounting snapshots router at /snapshots");
+
 app.listen(port, () => {
   // eslint-disable-next-line no-console
   console.log(`API listening on http://localhost:${port}`);
