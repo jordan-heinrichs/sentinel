@@ -1,16 +1,20 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { HoldingsBarChart } from "./HoldingsBarChart";
 
-const DEFAULT_SNAPSHOT = `{
-  "asOf": "${new Date().toISOString()}",
-  "holdings": [
-    { "chain": "base", "symbol": "USDC", "quantity": 600, "usdValue": 600 },
-    { "chain": "base", "symbol": "ETH",  "quantity": 0.15, "usdValue": 500 },
-    { "chain": "sol",  "symbol": "USDC", "quantity": 600, "usdValue": 600 },
-    { "chain": "sol",  "symbol": "SOL",  "quantity": 2.5,  "usdValue": 350 }
-  ]
-}`;
+const DEFAULT_SNAPSHOT_OBJ = {
+  asOf: "1970-01-01T00:00:00.000Z",
+  holdings: [
+    { chain: "base", symbol: "USDC", quantity: 600, usdValue: 600 },
+    { chain: "base", symbol: "ETH", quantity: 0.15, usdValue: 500 },
+    { chain: "sol", symbol: "USDC", quantity: 600, usdValue: 600 },
+    { chain: "sol", symbol: "SOL", quantity: 2.5, usdValue: 350 },
+  ],
+};
+
+// IMPORTANT: deterministic string to avoid SSR/CSR mismatch
+const DEFAULT_SNAPSHOT_TEXT = JSON.stringify(DEFAULT_SNAPSHOT_OBJ, null, 2);
 
 type LatestSnapshotResponse = {
   ok: boolean;
@@ -43,28 +47,27 @@ export default function DashboardClient({
   email: string;
 }) {
   const [stage, setStage] = useState<number>(4);
-  const [snapshotText, setSnapshotText] = useState<string>(DEFAULT_SNAPSHOT);
+  const [snapshotText, setSnapshotText] = useState<string>(DEFAULT_SNAPSHOT_TEXT);
 
   const [output, setOutput] = useState<any>(null);
-  const [busy, setBusy] = useState<null | "drift" | "suggest" | "load" | "save">(
-    null
-  );
+  const [busy, setBusy] = useState<null | "drift" | "suggest" | "load" | "save">(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string>("");
 
   // Track what the current output represents so we can optionally persist it.
-  const [lastComputed, setLastComputed] = useState<null | "drift" | "suggest">(
-    null
-  );
+  const [lastComputed, setLastComputed] = useState<null | "drift" | "suggest">(null);
 
-  const snapshotValid = useMemo(() => {
+  const parsedSnapshot = useMemo(() => {
     try {
-      const parsed = JSON.parse(snapshotText);
-      return !!parsed?.holdings?.length;
+      return JSON.parse(snapshotText);
     } catch {
-      return false;
+      return null;
     }
   }, [snapshotText]);
+
+  const snapshotValid = useMemo(() => {
+    return !!parsedSnapshot?.holdings?.length;
+  }, [parsedSnapshot]);
 
   async function loadLatest() {
     setError(null);
@@ -84,7 +87,13 @@ export default function DashboardClient({
       }
 
       if (!data.snapshot) {
-        setStatusMsg("No saved snapshots yet.");
+        // No saved snapshots yet — generate a fresh default in the browser (safe)
+        setSnapshotText(
+          JSON.stringify({ ...DEFAULT_SNAPSHOT_OBJ, asOf: new Date().toISOString() }, null, 2)
+        );
+        setOutput(null);
+        setLastComputed(null);
+        setStatusMsg("No saved snapshots yet. Loaded default sample snapshot.");
         return;
       }
 
@@ -92,7 +101,6 @@ export default function DashboardClient({
       setSnapshotText(JSON.stringify(data.snapshot.snapshotJson, null, 2));
 
       // Optional: if you want to show previously computed results:
-      // prefer driftResult/suggestions if they exist
       if (data.snapshot.driftResult != null) {
         setOutput(data.snapshot.driftResult);
         setLastComputed("drift");
@@ -105,9 +113,7 @@ export default function DashboardClient({
       }
 
       setStatusMsg(
-        `Loaded latest snapshot (${new Date(
-          data.snapshot.createdAt
-        ).toLocaleString()})`
+        `Loaded latest snapshot (${new Date(data.snapshot.createdAt).toLocaleString()})`
       );
     } catch (e: any) {
       setError(e?.message ?? String(e));
@@ -195,7 +201,15 @@ export default function DashboardClient({
 
   return (
     <div className="pixel-wrap">
-      <div className="pixel-card" style={{ width: "min(1100px, 95vw)" }}>
+        <div
+            className="pixel-card"
+            style={{
+                width: "min(1100px, 95vw)",
+                margin: "0 auto",
+            }}
+        >
+
+        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -210,15 +224,14 @@ export default function DashboardClient({
               Portfolio OS (MVP)
             </h1>
             <p className="pixel-sub" style={{ marginBottom: 0 }}>
-              Stage-driven drift + rebalance suggestions (Base + Sol). API:{" "}
-              {apiBase}
+              Stage-driven drift + rebalance suggestions (Base + Sol). API: {apiBase}
             </p>
             <p className="pixel-sub" style={{ marginBottom: 0 }}>
               User: {email}
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <span className="pixel-tag">STAGE</span>
               <input
@@ -281,7 +294,20 @@ export default function DashboardClient({
 
         <div className="pixel-hr" />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        {/* Body grid: holdings spans full width; snapshot/output split */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 16,
+          }}
+        >
+          {/* FULL-WIDTH HOLDINGS (spans both columns) */}
+          <section style={{ gridColumn: "1 / -1" , width: "100%"}}>
+            <HoldingsBarChart snapshot={parsedSnapshot} height={240} />
+          </section>
+
+          {/* LEFT: Snapshot JSON */}
           <section>
             <h2 className="pixel-title">Snapshot JSON</h2>
 
@@ -323,6 +349,7 @@ export default function DashboardClient({
             )}
           </section>
 
+          {/* RIGHT: Output */}
           <section>
             <h2 className="pixel-title">Output</h2>
 
